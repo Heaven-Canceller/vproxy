@@ -1,6 +1,10 @@
 # Build artifacts
 /target
 /dist
+/android/build/
+/android/local.properties
+/android/*.jks
+/android/*.keystore
 
 # 开发期在这台机器上跑出来的真实运行数据 —— 295MB、37 个库、2.6 万条节点，
 # 里面是别人的节点凭据（uuid / password / reality public-key）和这台机器自己的

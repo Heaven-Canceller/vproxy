@@ -31,9 +31,11 @@ fn main() {
     }
 
     #[cfg(windows)]
-    embed_resource::compile("assets/windows.rc", embed_resource::NONE)
-        .manifest_optional()
-        .expect("compile Windows application resources");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        embed_resource::compile("assets/windows.rc", embed_resource::NONE)
+            .manifest_optional()
+            .expect("compile Windows application resources");
+    }
 }
 
 /// 安装包用的"文件版本"：Inno 的 `VersionInfoVersion` / `VersionInfoProductVersion`
