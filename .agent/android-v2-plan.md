@@ -95,7 +95,7 @@ user operations in the product. Local test fixtures must not contain user data.
 - [x] Inspect desktop page groups, API surface, reusable modules, and Android
   kernel-platform gaps.
 - [x] Establish `codex/android-v2` and the immutable `android-v1` source tag.
-- [ ] Push the version ledger and v2 ExecPlan.
+- [x] Push the version ledger and v2 ExecPlan to the user's fork.
 - [ ] Refine the default full-parity scope if the user supplies further detail.
 - [ ] Implement and validate the selected v2 scope.
 
