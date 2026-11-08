@@ -5,15 +5,13 @@
 Android v1 is the existing, validated initial port at commit
 `dd17c1613587d9946b8a168a866ff9aac6bd596d`. Its APK, signing identity, source
 archive, and validation remain unchanged. Android v2 development belongs on
-`codex/android-v2`; v2 is not represented as a finished APK by creating this plan.
+`codex/android-v2`. Beta artifact completion is separate from full desktop parity.
 
-The working v2 objective is functional parity with desktop business features,
-with explicit Android equivalents for platform integration. The user was asked
-whether the first v2 delivery should instead focus on subscriptions and nodes.
-No scope answer had arrived during version setup, so full desktop-business
-migration remains the stated default; it is an assumption, not a recorded
-user confirmation of each milestone. Versioning and assessment can proceed
-independently of the delivery scope.
+The overall objective is functional parity with desktop business features,
+with explicit Android equivalents for platform integration. The user requested
+generation of the v2 APK. A beta artifact is being produced with the features
+implemented and tested in this iteration; it must remain clearly distinguished
+from completion of the full desktop-parity roadmap.
 
 No `.agent/PLANS.md` exists in this checkout. This plan is self-contained and
 must be updated as implementation and validation progress.
@@ -97,7 +95,31 @@ user operations in the product. Local test fixtures must not contain user data.
 - [x] Establish `codex/android-v2` and the immutable `android-v1` source tag.
 - [x] Push the version ledger and v2 ExecPlan to the user's fork.
 - [ ] Refine the default full-parity scope if the user supplies further detail.
-- [ ] Implement and validate the selected v2 scope.
+- [x] Implement and validate the v2 Beta scope and build arm64/x86_64 artifacts.
+- [ ] Complete remaining desktop-parity milestones listed below.
+
+## Current beta implementation
+
+- Added a process-local JNI management transport over existing Rust API services;
+  Android VPN lifecycle remains managed by VpnService, not the desktop manager.
+- Migrates v1 node JSON once into the desktop SQLite/sharded store, retaining the
+  original file. Backup restore preserves source grouping and merges idempotently.
+- Added six native pages for overview, subscriptions, nodes, policies, monitoring,
+  and settings. Sources/nodes, custom rules, DNS, YAML/Rhai, full canonical options,
+  controller monitoring, app exclusions, backup, and authenticated API are wired.
+- Added Android scheduled subscription refresh, optional subsequent verification,
+  optional health failover, and explicit discovery/registration/publishing/IP tools.
+- Emulator management tests passed, including source fetch through a local server,
+  migration, deduplication, rules, YAML, idempotent restore, engine detection,
+  API authentication, cancellation, and all six page headings.
+- Final v2 regression passed actual mixed-proxy, DNS, IPv4/IPv6 TUN, stop,
+  DB-generated configuration, runtime custom rules, authenticated policy control,
+  connection inspection, service-owned API, and unsupported process-rule rejection.
+- ARM64 APK signature, same signer as v1, ABI, version, and 16 KiB alignment pass.
+  The artifact hash and exact tests are recorded in android/V2_VALIDATION.md.
+- Remaining roadmap: additional VPN engines, historical per-app attribution,
+  advanced dedicated editors, appearance/language parity, boot persistence,
+  and physical-device/background/network-change acceptance.
 
 ## Design principles
 

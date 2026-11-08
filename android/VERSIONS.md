@@ -21,12 +21,16 @@ Do not rename/rebuild this artifact in place and then reuse its recorded hash.
 ## Android v2: desktop-feature migration
 
 - Development branch: `codex/android-v2`.
-- Status: scope and architecture assessment; no v2 APK has been produced.
+- APK versionName: `2.0.0-beta.1`; versionCode: `1160702`.
+- Status: beta APK built and emulator acceptance passed.
+- ARM64 APK: `vproxy-2.0.0-beta.1-arm64-v8a.apk`, 30,049,107 bytes.
+- SHA-256: `ed41b82eb2ef7cb4b0918f7485b257839151384a45630b64825efd271b9a3ed2`.
 - Working objective: migrate desktop business features with Android-specific
   integration, tracked by [.agent/android-v2-plan.md](../.agent/android-v2-plan.md).
 - Release identity: retain package ID and signing identity, and use a higher
   versionCode so v2 can update v1 without uninstalling it.
 - User data migration and actual feature-level runtime verification are required.
 
-v2 must have its own validation report and immutable artifact checksum. The
-existing `VALIDATION.md` describes v1 and must not be mistaken for v2 evidence.
+v2 evidence is recorded in [V2_VALIDATION.md](V2_VALIDATION.md). The existing
+`VALIDATION.md` describes v1 and must not be mistaken for v2 evidence. Beta
+generation does not close the remaining desktop-parity milestones.
