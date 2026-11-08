@@ -27,6 +27,9 @@ pub mod speedtest;
 pub mod system_proxy;
 pub mod tasks;
 
+#[cfg(target_os = "android")]
+mod android;
+
 #[cfg(feature = "gui")]
 pub mod gui;
 

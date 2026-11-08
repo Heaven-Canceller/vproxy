@@ -284,6 +284,11 @@ fn euid_is_root_from_status(status: &str) -> bool {
 
 /// Linux 上"要不要再提权一次"问的就是 effective uid —— 直接 `sudo` 起本程序时它是 0，
 /// 这时 TUN 已经能做，不该再要求一次提权。
+#[cfg(target_os = "android")]
+pub fn is_elevated() -> bool {
+    false
+}
+
 #[cfg(target_os = "linux")]
 pub fn is_elevated() -> bool {
     std::fs::read_to_string("/proc/self/status")
