@@ -1,4 +1,6 @@
-//! Minimal Android JNI adapter over the existing parser and compiler.
+//! Android JNI adapters over the existing business services and compiler.
+
+mod management;
 
 use jni::objects::{JClass, JString};
 use jni::sys::jstring;
@@ -68,5 +70,25 @@ pub extern "system" fn Java_io_github_heavencanceller_vproxy_NativeCore_compile(
                 Ok(value)
             }
         }
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_io_github_heavencanceller_vproxy_NativeCore_request(
+    env: JNIEnv,
+    _class: JClass,
+    root: JString,
+    native_dir: JString,
+    method: JString,
+    path: JString,
+    body: JString,
+) -> jstring {
+    string_result(env, |env| {
+        let root: String = env.get_string(&root)?.into();
+        let native_dir: String = env.get_string(&native_dir)?.into();
+        let method: String = env.get_string(&method)?.into();
+        let path: String = env.get_string(&path)?.into();
+        let body: String = env.get_string(&body)?.into();
+        management::request(&root, &native_dir, &method, &path, &body)
     })
 }

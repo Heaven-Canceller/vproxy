@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot
 $ToolRoot = [IO.Path]::GetFullPath($ToolRoot)
-$build = Join-Path $PSScriptRoot "build\$Abi"
+$build = Join-Path $PSScriptRoot "build\v2-$Abi"
 $dist = Join-Path $repo 'dist'
 New-Item -ItemType Directory -Path $ToolRoot,$build,$dist -Force | Out-Null
 if ($Proxy) { $env:HTTPS_PROXY=$Proxy; $env:HTTP_PROXY=$Proxy }
@@ -55,7 +55,7 @@ $env:CARGO_BUILD_JOBS='3'
 $env:RUSTFLAGS='-C link-arg=-Wl,-z,max-page-size=16384'
 Run 'rustup' @('target','add',$target)
 Push-Location $repo
-try { Run 'cargo' @('build','--release','--no-default-features','--lib','--target',$target) } finally { Pop-Location }
+try { Run 'cargo' @('rustc','--release','--locked','--no-default-features','--lib','--crate-type','cdylib','--target',$target) } finally { Pop-Location }
 $lib = Join-Path $build "package\lib\$Abi"
 New-Item -ItemType Directory -Path $lib -Force | Out-Null
 Copy-Item -LiteralPath (Join-Path $repo "target\$target\release\libvproxy.so") -Destination $lib
@@ -85,6 +85,7 @@ if ($SmokeTest) {
     $manifest=Join-Path $build 'AndroidManifest.xml'
     $xml=[IO.File]::ReadAllText((Join-Path $PSScriptRoot 'AndroidManifest.xml')).Replace('</manifest>','<instrumentation android:name=".SmokeTest" android:targetPackage="io.github.heavencanceller.vproxy" android:label="Local smoke tests" /><instrumentation android:name=".VpnSmokeTest" android:targetPackage="io.github.heavencanceller.vproxy" android:label="Local VPN tests" /></manifest>')
     $xml=$xml.Replace('android:allowBackup="false"','android:allowBackup="false" android:debuggable="true"')
+    $xml=$xml.Replace('</manifest>','<instrumentation android:name=".ManagementTest" android:targetPackage="io.github.heavencanceller.vproxy" android:label="v2 management tests" /></manifest>')
     [IO.File]::WriteAllText($manifest,$xml,[Text.UTF8Encoding]::new($false))
 }
 $unsigned=Join-Path $build 'unsigned.apk'
@@ -117,7 +118,9 @@ if (-not $KeyStore) {
     $env:VPROXY_STORE_PASSWORD='android'
 }
 if (-not $env:VPROXY_STORE_PASSWORD) { throw 'Set VPROXY_STORE_PASSWORD for the supplied keystore' }
-$output=Join-Path $dist "vproxy-1.16.7-android.1-$Abi.apk"
+[xml]$versionManifest=Get-Content -LiteralPath (Join-Path $PSScriptRoot 'AndroidManifest.xml') -Raw
+$versionName=$versionManifest.manifest.GetAttribute('versionName','http://schemas.android.com/apk/res/android')
+$output=Join-Path $dist "vproxy-$versionName-$Abi.apk"
 Run 'java' @('-jar',(Join-Path $buildTools 'lib\apksigner.jar'),'sign','--ks',$KeyStore,'--ks-key-alias',$KeyAlias,'--ks-pass','env:VPROXY_STORE_PASSWORD','--out',$output,$aligned)
 Run 'java' @('-jar',(Join-Path $buildTools 'lib\apksigner.jar'),'verify','--verbose','--print-certs',$output)
 Run (Join-Path $buildTools 'zipalign.exe') @('-c','-P','16','4',$output)

@@ -19,8 +19,15 @@ public final class VpnSmokeTest extends Instrumentation {
             if (VpnService.prepare(getTargetContext()) != null) throw new Exception("VPN consent missing");
             startActivitySync(new Intent(getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             JSONArray parsed = new JSONArray(NativeCore.parse("http://fixture@127.0.0.1:17891#TunnelFixture"));
-            String config = NativeCore.compile(parsed.getJSONObject(0).toString(), "mihomo");
-            config = new JSONObject(config).put("log-level", "debug").toString();
+            CoreClient.call(getTargetContext(),"POST","/android/import",new JSONObject().put("content","http://fixture@127.0.0.1:17891#TunnelFixture"));
+            JSONObject node=CoreClient.object(getTargetContext(),"GET","/api/nodes?keyword=TunnelFixture",null).getJSONArray("items").getJSONObject(0);
+            JSONObject options=CoreClient.object(getTargetContext(),"GET","/api/proxy/config",null);
+            options.put("routing_mode","global").put("url_test",false)
+                .put("override_yaml","mode: rule\nrules:\n  - DST-PORT,25,REJECT\n  - MATCH,PROXY\n")
+                .put("override_script",JSONObject.NULL);
+            CoreClient.call(getTargetContext(),"PUT","/api/proxy/config",options);
+            String config = CoreClient.config(getTargetContext(),node.getString("id")).put("log-level","debug").toString();
+            getTargetContext().getSharedPreferences("MainActivity",0).edit().putBoolean("android_api",true).commit();
             getTargetContext().startForegroundService(new Intent(getTargetContext(), ProxyVpnService.class).putExtra("config", config));
             for (int i = 0; i < 200; i++) {
                 if (ProxyVpnService.status.startsWith("VPN 已连接")) break;
@@ -28,6 +35,19 @@ public final class VpnSmokeTest extends Instrumentation {
                 Thread.sleep(100);
             }
             if (!ProxyVpnService.status.startsWith("VPN 已连接")) throw new Exception("VPN readiness timeout: " + ProxyVpnService.status);
+            JSONObject runtime=ControllerClient.request("GET","/proxies",null);
+            if(!runtime.getJSONObject("proxies").has("PROXY"))throw new Exception("Runtime proxy group missing");
+            JSONObject rules=ControllerClient.request("GET","/rules",null);
+            if(!rules.toString().contains("REJECT"))throw new Exception("v2 custom rules did not reach runtime");
+            JSONObject group=runtime.getJSONObject("proxies").getJSONObject("PROXY");
+            ControllerClient.request("PUT","/proxies/PROXY",new JSONObject().put("name",group.getString("now")));
+            ControllerClient.request("GET","/connections",null);
+            try(Socket api=new Socket("127.0.0.1",18080)) {
+                api.setSoTimeout(5000);
+                api.getOutputStream().write(("GET /api/proxy/status HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer "+LocalApiServer.token(getTargetContext())+"\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.US_ASCII));
+                String response=new BufferedReader(new InputStreamReader(api.getInputStream(),StandardCharsets.US_ASCII)).readLine();
+                if(response==null||!response.contains("200"))throw new Exception("VPN service API not available");
+            }
             Bundle progress = new Bundle(); progress.putString("stream", "VPN_READY: run the separate TunnelProbe instrumentation now\n"); sendStatus(0, progress);
             int handled = 0;
             long deadline = System.currentTimeMillis() + 120000;
@@ -58,7 +78,16 @@ public final class VpnSmokeTest extends Instrumentation {
             getTargetContext().startService(new Intent(getTargetContext(), ProxyVpnService.class).setAction("stop"));
             for (int i = 0; i < 50 && ProxyVpnService.running; i++) Thread.sleep(100);
             if (ProxyVpnService.running) throw new Exception("Service failed to stop");
-            result.putString("stream", "PASS: VPN service, inherited TUN FD, separate-UID IPv4/IPv6 traffic reached local upstream, service stopped\n");
+            getTargetContext().getSharedPreferences("MainActivity",0).edit().putBoolean("android_api",false).commit();
+            options.put("override_yaml",JSONObject.NULL);
+            CoreClient.call(getTargetContext(),"PUT","/api/proxy/config",options);
+            Thread.sleep(500);
+            JSONObject unsupported=new JSONObject(config).put("rules",new JSONArray().put("PROCESS-NAME,example,DIRECT").put("MATCH,PROXY"));
+            getTargetContext().startForegroundService(new Intent(getTargetContext(),ProxyVpnService.class).putExtra("config",unsupported.toString()));
+            for(int i=0;i<50&&!ProxyVpnService.status.startsWith("连接失败");i++)Thread.sleep(100);
+            if(!ProxyVpnService.status.contains("无法匹配其他进程")||ProxyVpnService.running)throw new Exception("Unsupported process rules were not rejected");
+            ProxyVpnService.status="已停止";
+            result.putString("stream", "PASS: v2 database-compiled config, custom runtime rule, authenticated groups/switch/connections, service-owned API, VPN TUN, separate-UID IPv4/IPv6 traffic, service stopped, unsupported process rules rejected\n");
             finish(-1, result);
         } catch (Throwable error) {
             getTargetContext().startService(new Intent(getTargetContext(), ProxyVpnService.class).setAction("stop"));

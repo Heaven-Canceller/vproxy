@@ -1,22 +1,41 @@
 # Android port
 
+The existing `1.16.7-android.1` build is **Android v1**. This branch builds
+**Android v2**, `2.0.0-beta.1`; see [version boundaries](VERSIONS.md), the
+[v2 migration matrix](V2_VALIDATION.md), and the [ExecPlan](../.agent/android-v2-plan.md).
+
 This directory adds a native Android interface to VProxy's existing Rust parser
 and configuration compiler. It starts a pinned upstream Mihomo Android executable
 from the APK's extracted native library directory. The VPN service creates an
 Android TUN interface and passes its file descriptor to the child process.
 The app excludes its own UID from VPN routing to prevent outbound loops.
 
-## Features
+## v2 features
 
-- HTTPS subscription, pasted text, and document import; private node storage.
-- Node selection, TCP handshake timing, Mihomo/sing-box/Xray configuration export.
+- Shared desktop Rust SQLite database, one-time v1 node migration, and preserved v1 files.
+- Subscription CRUD, enable/disable, per-source refresh, bulk refresh, custom User-Agent,
+  date templates, Telegram previews, explicit Gist discovery, OpenRung, and WARP registration.
+- Node merge/deduplication, keyword filtering, pagination, status and speed sorting,
+  deletion, TCP timing, and desktop kernel-verification task interfaces with cancellation.
+- Persistent routing modes, custom rules, DNS, automatic policy groups, YAML/Rhai
+  overrides, Geo data, and full canonical configuration access for chain/port mappings.
+- Runtime traffic chart, connection termination, policy-group selection, rules,
+  DNS queries, logs, health history, optional health-based failover, and IP inspection.
+- Android JobScheduler subscription refresh and optional verification after refresh.
+- App VPN exclusions, optional authenticated loopback management API, node exports,
+  backup/merge restore, and explicit publishing to a user-configured server.
+- Configuration export through all six upstream compilers, subject to each compiler's
+  actual protocol support; Mihomo remains the packaged VPN engine.
 - Foreground VPN service, disconnect notification, process exit monitoring, logs.
 - Local HTTP/SOCKS5 listener at `127.0.0.1:9980` while connected.
 - IPv4 and IPv6 default routes; Mihomo DNS hijacking through the TUN interface.
 
-The desktop GUI, multi-engine switching, scheduled collection, and advanced
-routing editors are not part of this first mobile port. TCP latency measures
-the server port only; it does not assert successful proxy authentication.
+v2 is a beta migration milestone, not a claim that every desktop capability has
+been reproduced. Five other VPN engines, full historical per-app traffic,
+desktop theme/language parity, privileged process matching, and boot-persistent
+scheduling are not implemented. Advanced configuration currently uses JSON/YAML
+editors rather than all desktop graphical editors. TCP latency measures the
+server port only; it does not assert successful proxy authentication.
 Configuration export retains upstream compiler limits. In particular, the
 current sing-box compiler rejects HTTP and Shadowsocks nodes; it supports a
 smaller protocol set than Mihomo. Unsupported exports show the compiler error.
@@ -55,7 +74,7 @@ license files before using or distributing their tools.
 ## Install and test
 
 ```powershell
-adb install -r dist/vproxy-1.16.7-android.1-arm64-v8a.apk
+adb install -r dist/vproxy-2.0.0-beta.1-arm64-v8a.apk
 adb shell am start -n io.github.heavencanceller.vproxy/.MainActivity
 ```
 
@@ -70,6 +89,7 @@ it on the test emulator, then run:
 
 ```powershell
 adb -s emulator-5556 shell am instrument -w io.github.heavencanceller.vproxy/.SmokeTest
+adb -s emulator-5556 shell am instrument -w io.github.heavencanceller.vproxy/.ManagementTest
 ./android/build-probe.ps1
 adb -s emulator-5556 install -r android/build/probe/vproxy-tunnel-probe.apk
 # Grant test-emulator VPN consent and notifications:
@@ -84,6 +104,9 @@ adb -s emulator-5556 shell am instrument -w io.github.heavencanceller.vproxyprob
 These fixtures use loopback upstreams and a reserved IPv4 destination. The
 separate probe UID is essential: VProxy's own UID is excluded from its VPN.
 The release arm64 build does not include instrumentation entry points.
+The management upgrade fixture requires a prior v1 `files/nodes.json` containing
+the synthetic `LegacyV1` node. This must only be seeded on a dedicated emulator;
+never overwrite an actual user's node file to run it.
 
 ## Licensing and source
 
