@@ -1,5 +1,9 @@
 # Android port
 
+The existing `1.16.7-android.1` build is **Android v1**. Desktop-feature migration
+is tracked separately as **Android v2**; see [version boundaries](VERSIONS.md)
+and the [v2 ExecPlan](../.agent/android-v2-plan.md).
+
 This directory adds a native Android interface to VProxy's existing Rust parser
 and configuration compiler. It starts a pinned upstream Mihomo Android executable
 from the APK's extracted native library directory. The VPN service creates an
