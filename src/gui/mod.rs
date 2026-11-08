@@ -2367,10 +2367,13 @@ impl VpnApp {
 
     pub(crate) fn cancel_speedtest(&mut self) {
         self.speedtester.cancel();
-        self.status = "正在停止测速...".into();
+        self.speedtest_busy = false;
+        self.busy = false;
+        self.status = "测速已手动停止".into();
     }
 
     pub(crate) fn speedtest_ids(&mut self, ids: Option<Vec<String>>, label: &str) {
+        self.speedtester.reset_cancel();
         let st = self.speedtester.clone();
         let mut opts = self.speed_opts();
         opts.measure_download = false;
@@ -2395,6 +2398,7 @@ impl VpnApp {
     }
 
     pub(crate) fn speedtest_all_sources(&mut self) {
+        self.speedtester.reset_cancel();
         let speedtester = self.speedtester.clone();
         let mut opts = self.speed_opts();
         opts.measure_download = false;
@@ -2689,6 +2693,7 @@ impl VpnApp {
             Some(self.region_filter.clone())
         };
 
+        self.speedtester.reset_cancel();
         let st = self.speedtester.clone();
         let mut opts = self.speed_opts();
         opts.measure_download = false;
@@ -2743,6 +2748,7 @@ impl VpnApp {
     }
 
     pub(crate) fn speedtest_one(&mut self, id: String) {
+        self.speedtester.reset_cancel();
         let st = self.speedtester.clone();
         let mut opts = self.speed_opts();
         opts.measure_download = false;
@@ -2766,6 +2772,8 @@ impl VpnApp {
     }
 
     pub(crate) fn speedtest_one_download(&mut self, id: String) {
+        self.speedtester.reset_cancel();
+        let cancel_token = self.speedtester.cancel_token();
         self.speedtest_busy = true;
         self.speedtest_phase = 1;
         self.speedtest_live_mbps = 0.0;
@@ -2850,12 +2858,20 @@ impl VpnApp {
             // 阶段 1: 延迟与抖动探测
             let mut latencies = Vec::new();
             for _ in 0..3 {
+                if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {
+                    let _ = tx.send(BgMsg::SpeedDone(Err("测速已手动停止".into())));
+                    return;
+                }
                 let start = std::time::Instant::now();
                 let ping_res = client.get(ping_url).send().await;
                 if ping_res.is_ok() {
                     latencies.push(start.elapsed().as_millis() as i64);
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+            }
+            if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = tx.send(BgMsg::SpeedDone(Err("测速已手动停止".into())));
+                return;
             }
             let ping_ms = if !latencies.is_empty() {
                 latencies.iter().sum::<i64>() / latencies.len() as i64
@@ -2881,6 +2897,7 @@ impl VpnApp {
             let dl_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             let dl_counter_worker = std::sync::Arc::clone(&dl_counter);
             let dl_done_worker = std::sync::Arc::clone(&dl_done);
+            let cancel_token_dl = std::sync::Arc::clone(&cancel_token);
             let worker_client = client.clone();
             let worker_dl_url = download_url.to_string();
 
@@ -2888,10 +2905,10 @@ impl VpnApp {
             tokio::spawn(async move {
                 if let Ok(mut resp) = worker_client.get(&worker_dl_url).send().await {
                     while let Ok(Ok(Some(chunk))) = tokio::time::timeout(std::time::Duration::from_millis(600), resp.chunk()).await {
-                        dl_counter_worker.fetch_add(chunk.len() as u64, std::sync::atomic::Ordering::Relaxed);
-                        if dl_done_worker.load(std::sync::atomic::Ordering::Relaxed) {
+                        if cancel_token_dl.load(std::sync::atomic::Ordering::Relaxed) || dl_done_worker.load(std::sync::atomic::Ordering::Relaxed) {
                             break;
                         }
+                        dl_counter_worker.fetch_add(chunk.len() as u64, std::sync::atomic::Ordering::Relaxed);
                     }
                 }
                 dl_done_worker.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -2904,7 +2921,17 @@ impl VpnApp {
             let dl_baseline = (2800.0 / (ping_ms as f32).max(12.0)).clamp(15.0, 95.0);
 
             for tick in 1..=48 {
+                if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {
+                    dl_done.store(true, std::sync::atomic::Ordering::Relaxed);
+                    let _ = tx.send(BgMsg::SpeedDone(Err("测速已手动停止".into())));
+                    return;
+                }
                 tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+                if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {
+                    dl_done.store(true, std::sync::atomic::Ordering::Relaxed);
+                    let _ = tx.send(BgMsg::SpeedDone(Err("测速已手动停止".into())));
+                    return;
+                }
                 let cur_bytes = dl_counter.load(std::sync::atomic::Ordering::Relaxed);
                 let delta = cur_bytes.saturating_sub(last_bytes);
                 last_bytes = cur_bytes;
@@ -2946,21 +2973,34 @@ impl VpnApp {
                 ((peak_dl_mbps.max(dl_baseline * 0.95)) * 10.0).round() / 10.0
             };
 
+            if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = tx.send(BgMsg::SpeedDone(Err("测速已手动停止".into())));
+                return;
+            }
+
             // 阶段 3: 真实上传吞吐带宽测速
             let _ = tx.send(BgMsg::Status("正在测速... 阶段 3/3: 真实上传带宽吞吐测速中".into()));
             // 指针与速率归零重新波动
             let _ = tx.send(BgMsg::SpeedtestLiveSample { mbps: 0.0, phase: 3 });
             tokio::time::sleep(std::time::Duration::from_millis(80)).await;
 
+            if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = tx.send(BgMsg::SpeedDone(Err("测速已手动停止".into())));
+                return;
+            }
+
             let ul_counter = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
             let ul_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             let ul_counter_worker = std::sync::Arc::clone(&ul_counter);
             let ul_done_worker = std::sync::Arc::clone(&ul_done);
+            let cancel_token_ul = std::sync::Arc::clone(&cancel_token);
             let worker_client2 = client.clone();
 
             tokio::spawn(async move {
                 let chunk_payload = vec![0u8; 128 * 1024]; // 128 KB 数据包
-                while !ul_done_worker.load(std::sync::atomic::Ordering::Relaxed) {
+                while !ul_done_worker.load(std::sync::atomic::Ordering::Relaxed)
+                    && !cancel_token_ul.load(std::sync::atomic::Ordering::Relaxed)
+                {
                     if let Ok(resp) = worker_client2
                         .post("https://speed.cloudflare.com/__up")
                         .body(chunk_payload.clone())
@@ -2985,7 +3025,17 @@ impl VpnApp {
             let ul_baseline = (final_dl_mbps * 0.16).clamp(3.5, 45.0);
 
             for tick in 1..=40 {
+                if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {
+                    ul_done.store(true, std::sync::atomic::Ordering::Relaxed);
+                    let _ = tx.send(BgMsg::SpeedDone(Err("测速已手动停止".into())));
+                    return;
+                }
                 tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+                if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {
+                    ul_done.store(true, std::sync::atomic::Ordering::Relaxed);
+                    let _ = tx.send(BgMsg::SpeedDone(Err("测速已手动停止".into())));
+                    return;
+                }
                 let cur_bytes = ul_counter.load(std::sync::atomic::Ordering::Relaxed);
                 let delta = cur_bytes.saturating_sub(last_ul_bytes);
                 last_ul_bytes = cur_bytes;
@@ -3029,6 +3079,11 @@ impl VpnApp {
             let _ = tx.send(BgMsg::SpeedtestLiveSample { mbps: final_ul_mbps, phase: 3 });
 
             let download_kbps = (final_dl_mbps * 1000.0 / 8.0) as f64;
+
+            if cancel_token.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = tx.send(BgMsg::SpeedDone(Err("测速已手动停止".into())));
+                return;
+            }
 
             // 写入持久化数据库
             let _ = db
@@ -5147,6 +5202,7 @@ impl VpnApp {
     }
 
     pub(crate) fn speedtest_source(&mut self, source_id: &str, source_name: &str) {
+        self.speedtester.reset_cancel();
         let db = self.db.clone();
         let speedtester = self.speedtester.clone();
         let mut opts = self.speed_opts();
@@ -6003,18 +6059,21 @@ impl eframe::App for VpnApp {
                     .fill(theme::page_bg())
                     .inner_margin(Margin::symmetric(18, 14)),
             )
-            .show(ui, |ui| match self.tab {
-                Tab::Sources => self.ui_sources(ui),
-                Tab::Nodes => self.ui_nodes(ui),
-                Tab::Proxy => self.ui_proxy(ui),
-                Tab::Extensions => self.ui_extensions(ui),
-                Tab::Settings => self.ui_settings(ui),
-                Tab::Api => {
-                    self.tab = Tab::Settings;
-                    self.settings_tab = SettingsTab::Api;
-                    self.ui_settings(ui);
+            .show(ui, |ui| {
+                ui.set_clip_rect(ui.max_rect());
+                match self.tab {
+                    Tab::Sources => self.ui_sources(ui),
+                    Tab::Nodes => self.ui_nodes(ui),
+                    Tab::Proxy => self.ui_proxy(ui),
+                    Tab::Extensions => self.ui_extensions(ui),
+                    Tab::Settings => self.ui_settings(ui),
+                    Tab::Api => {
+                        self.tab = Tab::Settings;
+                        self.settings_tab = SettingsTab::Api;
+                        self.ui_settings(ui);
+                    }
+                    Tab::About => self.ui_about(ui),
                 }
-                Tab::About => self.ui_about(ui),
             });
 
         // 无边框之后系统的缩放手边没有了，这层覆盖只在窗口最外圈 6px 内响应。

@@ -352,14 +352,14 @@ fn dash_bottom_proxy_item(
     // 画框式精确外框：外框宽严格 = w + 28（内容不再撑宽卡片）
     let outer = Rect::from_min_size(
         ui.cursor().min,
-        Vec2::new(w + 28.0, h + 24.0),
+        Vec2::new(w + 28.0, h + 20.0),
     );
     dash_card_at(ui, outer);
     // 画框不推进 cursor：显式把光标拨到卡右侧，行内下一元素从这继续
     ui.advance_cursor_after_rect(outer);
-    let band = outer.shrink2(Vec2::new(14.0, 12.0));
+    let band = outer.shrink2(Vec2::new(14.0, 10.0));
     ui.scope_builder(egui::UiBuilder::new().max_rect(band), |ui| {
-        ui.set_clip_rect(band);
+        ui.set_clip_rect(ui.clip_rect().intersect(band));
         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
                 // 内部横向间距清零（宽度预算按 icon 34 + 显式 8 + 文字 + 右侧 52 精确计算，
                 // 默认 10px 间距会让每张卡实际渲染比预算宽 30px，把整行顶出屏幕）
@@ -368,7 +368,7 @@ fn dash_bottom_proxy_item(
                 let show_icon = w >= 150.0;
                 if show_icon {
                     let sense = if can_open_drawer { Sense::click() } else { Sense::hover() };
-                    let (icon_rect, icon_resp) = ui.allocate_exact_size(Vec2::splat(34.0), sense);
+                    let (icon_rect, icon_resp) = ui.allocate_exact_size(Vec2::splat(32.0), sense);
                     let is_hovered = can_open_drawer && icon_resp.hovered();
                     let icon_bg = if theme::is_light() {
                         if is_hovered {
@@ -382,7 +382,7 @@ fn dash_bottom_proxy_item(
                         theme::sidebar()
                     };
                     ui.painter().rect_filled(icon_rect, CornerRadius::same(9), icon_bg);
-                    draw_icon(ui.painter(), icon_rect.shrink(9.0), icon, icon_color);
+                    draw_icon(ui.painter(), icon_rect.shrink(8.0), icon, icon_color);
                     if can_open_drawer {
                         let icon_resp = icon_resp
                             .on_hover_cursor(egui::CursorIcon::PointingHand)
@@ -403,7 +403,7 @@ fn dash_bottom_proxy_item(
                 // 文字列（宽度受控并截断）：整块文字用 painter 精确垂直居中绘制
                 let painter = ui.painter().clone();
                 let text_w = if show_icon {
-                    (w - 34.0 - 8.0 - 52.0).max(40.0)
+                    (w - 32.0 - 8.0 - 52.0).max(40.0)
                 } else {
                     (w - 44.0).max(40.0)
                 };
@@ -419,21 +419,16 @@ fn dash_bottom_proxy_item(
                 let line_gap = 2.0_f32;
                 let block_h = title_galley.rect.height() + line_gap + sub_galley.rect.height();
                 let block_top = text_rect.center().y - block_h / 2.0;
-                // 标题加粗：同一 galley 偏移 0.5px 重画一次
+                // 单次清晰绘制标题，彻底杜绝双次偏移叠加造成的文字重影与字符覆盖
                 painter.galley(
                     egui::pos2(text_rect.left(), block_top),
-                    title_galley.clone(),
-                    theme::text_primary(),
-                );
-                painter.galley(
-                    egui::pos2(text_rect.left() + 0.5, block_top),
-                    title_galley.clone(),
+                    title_galley,
                     theme::text_primary(),
                 );
                 painter.galley(
                     egui::pos2(
                         text_rect.left(),
-                        block_top + title_galley.rect.height() + line_gap,
+                        block_top + 16.0 + line_gap,
                     ),
                     sub_galley,
                     theme::muted(),
@@ -702,8 +697,8 @@ impl VpnApp {
     ) {
         let gap = 8.0_f32;
         let is_compact = self.settings.dashboard_ui_mode == "compact";
-        let row1_h = if is_compact { 216.0_f32 } else { 176.0_f32 };
-        let row2_h = if is_compact { 187.0_f32 } else { 130.0_f32 };
+        let row1_h = if is_compact { 216.0_f32 } else { 168.0_f32 };
+        let row2_h = if is_compact { 187.0_f32 } else { 148.0_f32 };
         let _row3_h = 154.0_f32;
 
         // 宽度预算先扣除每张卡自身的左右内边距（Frame 外框 = 内容 + margin）。
@@ -745,7 +740,7 @@ impl VpnApp {
 
             // --- 第 1 行：状态 | 上传 | 下载（按列 x 精确放置；一次占位，行距不受内容影响） ---
             // 行高按内容实际需要放宽（状态卡含 头行+IP+标签+元信息 四段）：
-            let row1_needed = row1_h + 36.0; // 外框边距20 + 内容富余16
+            let row1_needed = row1_h + 28.0; // 外框边距20 + 内容富余8
             let row_top = ui.cursor().min;
             let row_w = ui.available_width();
             ui.allocate_ui(egui::vec2(row_w, row1_needed), |ui| {
@@ -768,7 +763,7 @@ impl VpnApp {
 
             // --- 第 2 行：活动连接 (与服务状态+分流规则之和等宽) | 软件性能 (出站模式上方) | 内核性能 (策略组上方) ---
             if !is_compact {
-                let row_mid_h = 133.0_f32;
+                let row_mid_h = 122.0_f32;
                 let row_top = ui.cursor().min;
                 let row_w = ui.available_width();
                 ui.allocate_ui(egui::vec2(row_w, row_mid_h), |ui| {
@@ -808,12 +803,22 @@ impl VpnApp {
                             0 => self.dash_services_card(ui, w, row2_h),
                             1 => self.dash_rules_card(ui, w, row2_h),
                             2 => {
-                                let card_gap = 10.0_f32;
-                                let card1_h = if is_compact { 88.0 } else { 45.0_f32 };
+                                ui.spacing_mut().item_spacing.y = 0.0;
+                                let card_gap = if is_compact { 8.0_f32 } else { 5.0_f32 };
+                                let card1_h = if is_compact { 82.0_f32 } else { 62.0_f32 };
                                 let card2_h = row_h2 - card_gap - card1_h;
-                                self.dash_mode_card(ui, w, card1_h);
-                                ui.add_space(card_gap);
-                                self.dash_chain_card(ui, w, card2_h);
+
+                                // 采用绝对几何定位渲染两张子卡片，彻底免疫内部 scope_builder 光标收缩造成的两卡重叠
+                                let rect1 = Rect::from_min_size(origin, egui::vec2(w + 28.0, card1_h));
+                                let origin2 = egui::pos2(origin.x, origin.y + card1_h + card_gap);
+                                let rect2 = Rect::from_min_size(origin2, egui::vec2(w + 28.0, card2_h));
+
+                                ui.scope_builder(egui::UiBuilder::new().max_rect(rect1), |ui| {
+                                    self.dash_mode_card(ui, w, card1_h);
+                                });
+                                ui.scope_builder(egui::UiBuilder::new().max_rect(rect2), |ui| {
+                                    self.dash_chain_card(ui, w, card2_h);
+                                });
                             }
                             _ => self.dash_groups_card(ui, w, row2_h),
                         }
@@ -825,7 +830,7 @@ impl VpnApp {
             self.render_bottom_proxy_bar(ui, total_w, gap, 3, Some((conns_w, groups_w, perf_w)));
 
             // 底部预留舒适呼吸内边距，消除滚动到底部时的边界摩擦与振荡
-            ui.add_space(16.0);
+            ui.add_space(14.0);
         });
     }
 
@@ -1867,7 +1872,7 @@ impl VpnApp {
     ui.advance_cursor_after_rect(outer);
         let inner = outer.shrink2(Vec2::new(20.0, 10.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            ui.set_clip_rect(inner);
+            ui.set_clip_rect(ui.clip_rect().intersect(inner));
             ui.vertical(|ui| {
                 // 行距归零：区块间距全部由下面的 add_space 显式控制（否则 egui 默认
                 // 行距会叠在估算之外，把最后一行顶出卡片被裁掉）。
@@ -2406,7 +2411,7 @@ impl VpnApp {
         ui.advance_cursor_after_rect(outer);
         let inner = outer.shrink2(Vec2::new(20.0, 10.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            ui.set_clip_rect(inner);
+            ui.set_clip_rect(ui.clip_rect().intersect(inner));
             // 垂直间距全部显式控制：主题全局 item_spacing.y = 9 会在每个元素间叠加，
             // 把波形图顶出卡片被裁切，标题与统计按钮之间也会被撑出一大段空白
             ui.spacing_mut().item_spacing.y = 0.0;
@@ -2476,7 +2481,7 @@ impl VpnApp {
         cols: usize,
         align: Option<(f32, f32, f32)>,
     ) {
-        let card_h = 52.0_f32;
+        let card_h = 44.0_f32;
         let terminal_on = self.proxy_config.terminal_proxy;
         let lan_on = self.proxy_config.allow_lan;
         let mode = self.proxy_config.mode;
@@ -2663,7 +2668,7 @@ impl VpnApp {
             // 前三卡：x = 0, w3+28+8, 2*(w3+28+8)（合计 = 实时连接外框宽）
             // 后两卡：从 x_mode 列起平分剩余。
             let bar_top = ui.cursor().min;
-            let bar_h = card_h + 24.0;
+            let bar_h = card_h + 20.0;
             let step3 = w3 + cm3 + inner_gap;
             let three_end = 3.0 * (w3 + cm3) + 2.0 * inner_gap; // = 实时连接外框宽
             let rest = total_w - three_end - gap; // 前三卡与后两卡之间留行距级间隙
@@ -2704,7 +2709,7 @@ impl VpnApp {
         ui.advance_cursor_after_rect(outer);
         let inner = outer.shrink2(Vec2::new(14.0, 6.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            ui.set_clip_rect(inner);
+            ui.set_clip_rect(ui.clip_rect().intersect(inner));
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 // 顶部标题行 + 一键重测按钮
@@ -2842,7 +2847,7 @@ impl VpnApp {
         ui.advance_cursor_after_rect(outer);
         let inner = outer.shrink2(Vec2::new(14.0, 6.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            ui.set_clip_rect(inner);
+            ui.set_clip_rect(ui.clip_rect().intersect(inner));
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.horizontal(|ui| {
@@ -2996,7 +3001,7 @@ impl VpnApp {
         ui.advance_cursor_after_rect(outer);
         let inner = outer.shrink2(Vec2::new(14.0, 5.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            ui.set_clip_rect(inner);
+            ui.set_clip_rect(ui.clip_rect().intersect(inner));
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 let sub_label = match current {
@@ -3004,10 +3009,18 @@ impl VpnApp {
                     RoutingMode::Direct => Some("全部直连".to_string()),
                     _ => None,
                 };
+
+                // 顶栏：标题始终保持在卡片顶部，与其他卡片标题等高平齐
                 dash_label(ui, "出站模式", sub_label);
 
-                let slack = ((inner.height() - 18.0 - 24.0) * 0.5).max(2.0);
-                ui.add_space(slack);
+                // 下方胶囊切换器在剩余区域内自适应居中排布
+                let seg_h = 24.0_f32;
+                let title_h = 18.0_f32;
+                let remain_h = (inner.height() - title_h).max(0.0);
+                let slack = (remain_h - seg_h).max(0.0);
+                let mid_gap = (slack * 0.42).clamp(4.0, 16.0);
+                ui.add_space(mid_gap);
+
                 let seg_w = ui.available_width();
 
                 // 三段式胶囊切换器（规则 / 全局 / 直连）
@@ -3018,8 +3031,9 @@ impl VpnApp {
                     .inner_margin(Margin::symmetric(2, 2))
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 3.0;
-                            let bw = ((seg_w - 12.0) / 3.0).floor();
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            ui.spacing_mut().button_padding = Vec2::new(1.0, 1.0);
+                            let bw = ((seg_w - 4.0 - 4.0) / 3.0).floor().max(20.0);
                             for (mode, name) in [
                                 (RoutingMode::Rule, "规则"),
                                 (RoutingMode::Global, "全局"),
@@ -3032,12 +3046,12 @@ impl VpnApp {
                                     (Color32::TRANSPARENT, Stroke::NONE, theme::text_secondary())
                                 };
                                 let btn = egui::Button::new(
-                                    RichText::new(name).size(11.0).strong().color(text_color),
+                                    RichText::new(name).size(11.5).strong().color(text_color),
                                 )
                                 .fill(fill)
                                 .stroke(stroke)
                                 .corner_radius(CornerRadius::same(7))
-                                .min_size(Vec2::new(bw, 20.0));
+                                .min_size(Vec2::new(bw, 22.0));
                                 if ui.add(btn).clicked() && !active && !is_busy {
                                     if self.proxy_status.local_proxy_active() {
                                         self.hot_switch_routing_mode(mode);
@@ -3069,11 +3083,11 @@ impl VpnApp {
         ui.advance_cursor_after_rect(outer);
         let inner = outer.shrink2(Vec2::new(14.0, 5.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            ui.set_clip_rect(inner);
+            ui.set_clip_rect(ui.clip_rect().intersect(inner));
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
 
-                // 顶栏：左侧标题，右上角放置开启/关闭按钮
+                // 顶栏：左侧标题，右上角放置开启/关闭按钮（始终保持在卡片顶部，与其他卡片标题等高平齐）
                 ui.horizontal(|ui| {
                     ui.label(
                         RichText::new("链式代理")
@@ -3134,7 +3148,13 @@ impl VpnApp {
                     });
                 });
 
-                ui.add_space(13.0);
+                // 下方节点选择区自适应居中排布，留白充足且绝不贴底
+                let avail_h = (inner.height() - 20.0).max(0.0);
+                let slack = (avail_h - 40.0).max(0.0);
+                let chain_space = (slack * 0.45).clamp(4.0, 16.0);
+                let row_gap = (slack * 0.22).clamp(3.0, 8.0);
+
+                ui.add_space(chain_space);
 
                 // 下栏：两行展示（前置: 节点 [清理] / 后置: 节点 [清理]）
                 let can_interact = supports_chain && !is_busy;
@@ -3285,8 +3305,8 @@ impl VpnApp {
                         }
                     });
 
-                    // 后置行增加适度上间距，使前后置节点配置边界清晰、呼吸感更佳
-                    ui.add_space(6.0);
+                    // 后置行自适应间距，前后置节点边界清晰且绝不贴底
+                    ui.add_space(row_gap);
 
                     // 第二行：后置: 节点 [清理图标]
                     ui.horizontal(|ui| {
@@ -3438,7 +3458,7 @@ impl VpnApp {
         ui.advance_cursor_after_rect(outer);
         let inner = outer.shrink2(Vec2::new(14.0, 6.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            ui.set_clip_rect(inner);
+            ui.set_clip_rect(ui.clip_rect().intersect(inner));
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.horizontal(|ui| {
@@ -3561,7 +3581,7 @@ impl VpnApp {
         ui.advance_cursor_after_rect(outer);
         let inner = outer.shrink2(Vec2::new(14.0, 8.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            ui.set_clip_rect(inner);
+            ui.set_clip_rect(ui.clip_rect().intersect(inner));
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.horizontal(|ui| {
@@ -3718,7 +3738,7 @@ impl VpnApp {
         ui.advance_cursor_after_rect(outer);
         let inner = outer.shrink2(Vec2::new(14.0, 8.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            ui.set_clip_rect(inner);
+            ui.set_clip_rect(ui.clip_rect().intersect(inner));
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.horizontal(|ui| {
@@ -3738,7 +3758,7 @@ impl VpnApp {
                     });
                 });
 
-                ui.add_space(18.0);
+                ui.add_space(8.0);
 
                 let col_w = ((w - 8.0) / 3.0).max(36.0);
                 let cpu = self.perf_stats.cpu_percent;
@@ -3787,7 +3807,7 @@ impl VpnApp {
         ui.advance_cursor_after_rect(outer);
         let inner = outer.shrink2(Vec2::new(14.0, 8.0));
         ui.scope_builder(egui::UiBuilder::new().max_rect(inner), |ui| {
-            ui.set_clip_rect(inner);
+            ui.set_clip_rect(ui.clip_rect().intersect(inner));
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 ui.horizontal(|ui| {
@@ -3830,7 +3850,7 @@ impl VpnApp {
                     });
                 });
 
-                ui.add_space(18.0);
+                ui.add_space(8.0);
 
                 let col_w = ((w - 8.0) / 3.0).max(36.0);
                 let cpu = if is_running { self.kernel_perf_stats.cpu_percent } else { 0.0 };

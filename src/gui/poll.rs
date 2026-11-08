@@ -656,15 +656,17 @@ impl VpnApp {
                             self.speedtest_last_jitter_ms = Some(jitter_ms);
                         }
                         BgMsg::SpeedtestLiveSample { mbps, phase } => {
-                            self.speedtest_busy = true;
-                            self.speedtest_phase = phase;
-                            self.speedtest_live_mbps = mbps;
-                            if phase == 2 {
-                                self.speedtest_last_dl_mbps = Some(mbps);
-                                self.speedtest_dl_history.push(mbps);
-                            } else if phase == 3 {
-                                self.speedtest_last_ul_mbps = Some(mbps);
-                                self.speedtest_ul_history.push(mbps);
+                            if !self.speedtester.is_cancelled() {
+                                self.speedtest_busy = true;
+                                self.speedtest_phase = phase;
+                                self.speedtest_live_mbps = mbps;
+                                if phase == 2 {
+                                    self.speedtest_last_dl_mbps = Some(mbps);
+                                    self.speedtest_dl_history.push(mbps);
+                                } else if phase == 3 {
+                                    self.speedtest_last_ul_mbps = Some(mbps);
+                                    self.speedtest_ul_history.push(mbps);
+                                }
                             }
                         }
                         BgMsg::SpeedDone(Ok(sum)) => {
